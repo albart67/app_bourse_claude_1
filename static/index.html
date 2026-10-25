@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bourse</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#14213d;--mut:#6b7280;--line:#dfe3e8;--up:#0f8a5f;--dn:#c8402f;--acc:#2a5bd7}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1420;--card:#161e2e;--ink:#e8ecf3;--mut:#93a0b4;--line:#27324a;--up:#3ccf93;--dn:#ff7a68;--acc:#7ea2ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Source Sans 3",system-ui,sans-serif}
+header,main{max-width:1000px;margin:auto;padding:16px}
+h1{font:600 24px Georgia,serif;margin:0 0 12px}
+form{display:flex;gap:8px;flex-wrap:wrap}
+input,select,button{font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+button{background:var(--acc);color:#fff;border:0;cursor:pointer}button.ghost{background:none;color:var(--dn);padding:2px 6px}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:12px 0}
+nav button{background:none;color:var(--mut);border-radius:0;border-bottom:2px solid transparent}
+nav button[aria-selected=true]{color:var(--ink);border-color:var(--acc)}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.tags span{border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.grid div{border:1px solid var(--line);border-radius:6px;padding:8px}.grid small{color:var(--mut);display:block}.grid b{font-size:17px}
+table{width:100%;border-collapse:collapse}th,td{padding:6px;text-align:right;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+.up{color:var(--up)}.dn{color:var(--dn)}.err{color:var(--dn);padding:8px 0}
+.wrap{overflow-x:auto}canvas{max-height:260px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.filters label{display:flex;gap:6px;align-items:center}
+th[data-k]{cursor:pointer;user-select:none;white-space:nowrap}th[data-k]:hover{color:var(--acc)}td.n{white-space:nowrap}
+.pea{font-size:12px;border:1px solid var(--up);color:var(--up);border-radius:99px;padding:0 6px}
+.bars div{display:grid;grid-template-columns:150px 1fr 50px;gap:8px;align-items:center;font-size:13px;margin:3px 0}
+.bars i{display:block;height:10px;background:var(--acc);border-radius:2px}.bars span:last-child{text-align:right}
+h3{font:600 15px Georgia,serif;margin:12px 0 6px}
+</style></head><body>
+<header><h1>Bourse</h1>
+<form id="f"><input id="sym" value="AAPL" aria-label="Symbole" placeholder="AAPL, AIR.PA…" size="10">
+<select id="per" aria-label="Période"><option value="3mo">3 mois</option><option value="6mo">6 mois</option><option value="1y" selected>1 an</option><option value="5y">5 ans</option></select>
+<button>Analyser</button></form>
+<nav role="tablist"><button data-t="tech" aria-selected="true">Technique</button><button data-t="fund" aria-selected="false">Fondamental</button><button data-t="etf" aria-selected="false">ETF</button><button data-t="pf" aria-selected="false">Portefeuille</button></nav></header>
+<main>
+<div id="err" class="err" role="alert"></div>
+<section id="tech" class="on"><div id="sig" class="tags"></div>
+<div class="card"><canvas id="c1"></canvas></div><div class="card"><canvas id="c2"></canvas></div><div class="card"><canvas id="c3"></canvas></div></section>
+<section id="fund"><div class="card"><h2 id="fname" style="margin:0 0 8px;font:600 18px Georgia,serif"></h2><div id="fgrid" class="grid"></div><div id="fextra"></div></div></section>
+<section id="etf"><div class="card"><div class="filters">
+<select id="ecat" aria-label="Catégorie"><option value="">Toutes catégories</option></select>
+<label><input type="checkbox" id="epea"> PEA uniquement</label>
+<form id="eadd" style="margin-left:auto"><input id="esym" placeholder="Autre ETF (ex. VUSA.AS)" size="18" required><button>Ajouter</button></form></div>
+<div class="wrap"><table id="etab"></table></div><div id="emiss" class="err"></div>
+<p style="color:var(--mut);font-size:13px;margin:8px 0 0">Coche des ETF pour les comparer (base 100). Perf/an : rendement annualisé · Rend./risque : perf annualisée ÷ volatilité. Cours en devise de cotation.</p></div>
+<div class="card"><canvas id="c4"></canvas></div></section>
+<section id="pf"><form id="pff" class="card"><input id="ps" placeholder="Symbole" size="8" required><input id="pq" type="number" step="any" min="0" placeholder="Quantité" required style="width:100px"><input id="pb" type="number" step="any" min="0" placeholder="Prix d'achat" required style="width:110px"><button>Ajouter</button></form>
+<div class="card wrap"><div id="pfsum"></div><table id="pft"></table></div></section>
+</main>
+<script>
+const $=s=>document.querySelector(s),charts={};
+const fmt=(v,d=2)=>v==null?"—":Number(v).toLocaleString("fr-FR",{maximumFractionDigits:d});
+const pct=v=>v==null?"—":fmt(v*100)+" %";
+const big=v=>v==null?"—":v>=1e9?fmt(v/1e9,1)+" Md":v>=1e6?fmt(v/1e6,1)+" M":fmt(v,0);
+async function api(url,opt){const r=await fetch(url,opt);const j=await r.json();if(!r.ok)throw new Error(j.detail||"Erreur serveur");return j}
+function draw(id,type,data,opts={}){charts[id]?.destroy();charts[id]=new Chart($(id),{type,data,options:{responsive:true,animation:false,interaction:{mode:"index",intersect:false},elements:{point:{radius:0},line:{borderWidth:1.5}},plugins:{legend:{labels:{boxWidth:10}}},scales:{x:{ticks:{maxTicksLimit:6}}},...opts}})}
+const ds=(label,data,color,extra={})=>({label,data,borderColor:color,backgroundColor:color,...extra});
+async function loadTech(){
+ const s=$("#sym").value.trim(),d=await api(`/api/technical/${encodeURIComponent(s)}?period=${$("#per").value}`);
+ $("#sig").innerHTML=d.signals.map(t=>`<span>${t}</span>`).join("");
+ draw("#c1","line",{labels:d.dates,datasets:[ds("Cours",d.close,"#2a5bd7"),ds("SMA 20",d.sma20,"#e0a100"),ds("SMA 50",d.sma50,"#c8402f")]});
+ draw("#c2","line",{labels:d.dates,datasets:[ds("RSI 14",d.rsi,"#7a5af8")]},{scales:{y:{min:0,max:100}}});
+ draw("#c3","line",{labels:d.dates,datasets:[ds("MACD",d.macd,"#2a5bd7"),ds("Signal",d.signal,"#e0a100")]});
+}
+async function loadFund(){
+ const f=await api(`/api/fundamentals/${encodeURIComponent($("#sym").value.trim())}`);
+ $("#fextra").innerHTML="";
+ if(f.type==="etf")return renderEtfFund(f);
+ $("#fname").textContent=`${f.name} ${f.sector?"· "+f.sector:""}`;
+ const it=[["Capitalisation",big(f.market_cap)+" "+(f.currency||"")],["PER",fmt(f.per)],["PER prévisionnel",fmt(f.per_forward)],["Price/Book",fmt(f.pb)],["Rendement dividende",f.dividend_yield==null?"—":fmt(f.dividend_yield)+" %"],["ROE",pct(f.roe)],["Marge nette",pct(f.profit_margin)],["Dette/Fonds propres",fmt(f.debt_to_equity)],["Croissance CA",pct(f.revenue_growth)],["Bêta",fmt(f.beta)],["Plus haut 52 s.",fmt(f.high_52w)],["Plus bas 52 s.",fmt(f.low_52w)]];
+ $("#fgrid").innerHTML=it.map(([k,v])=>`<div><small>${k}</small><b>${v}</b></div>`).join("");
+}
+let pos=[];try{pos=JSON.parse(localStorage.getItem("pos")||"[]")}catch(e){}
+const save=()=>{try{localStorage.setItem("pos",JSON.stringify(pos))}catch(e){}};
+function renderEtfFund(f){
+ $("#fname").textContent=`${f.name} · ETF`;
+ const it=[["Frais courants (TER)",f.expense_ratio==null?"—":fmt(f.expense_ratio)+" %"],["Encours",big(f.total_assets)+" "+(f.currency||"")],["Émetteur",f.family||"—"],["Catégorie",f.category||"—"],["Perf. depuis 1er janv.",f.ytd_return==null?"—":fmt(f.ytd_return)+" %"],["Perf. moy. 3 ans",pct(f.return_3y)],["Perf. moy. 5 ans",pct(f.return_5y)],["Rendement distribué",pct(f.yield)],["Bêta 3 ans",fmt(f.beta)],["Plus haut 52 s.",fmt(f.high_52w)],["Plus bas 52 s.",fmt(f.low_52w)]];
+ $("#fgrid").innerHTML=it.map(([k,v])=>`<div><small>${k}</small><b>${esc(v)}</b></div>`).join("");
+ const SEC={technology:"Technologie",financial_services:"Finance",healthcare:"Santé",industrials:"Industrie",consumer_cyclical:"Conso. cyclique",consumer_defensive:"Conso. de base",communication_services:"Communication",energy:"Énergie",basic_materials:"Matériaux",utilities:"Services publics",realestate:"Immobilier"};
+ const sec=Object.entries(f.sectors).sort((a,b)=>b[1]-a[1]),mx=sec.length?sec[0][1]:1;
+ let h="";
+ if(sec.length)h+=`<h3>Répartition sectorielle</h3><div class="bars">${sec.map(([k,v])=>`<div><span>${esc(SEC[k]||k)}</span><i style="width:${v/mx*100}%"></i><span>${fmt(v,1)} %</span></div>`).join("")}</div>`;
+ if(f.holdings.length)h+=`<h3>Principales lignes</h3><div class="wrap"><table><tr><th>Titre</th><th>Nom</th><th>Poids</th></tr>${f.holdings.map(r=>`<tr><td>${esc(r.symbol)}</td><td style="text-align:left">${esc(r.name)}</td><td>${fmt(r.pct)} %</td></tr>`).join("")}</table></div>`;
+ $("#fextra").innerHTML=h;
+}
+async function loadPf(){
+ if(!pos.length){$("#pfsum").textContent="Ajoute une première position pour suivre ta performance.";$("#pft").innerHTML="";return}
+ const p=await api("/api/portfolio",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pos)});
+ const c=v=>v>=0?"up":"dn";
+ $("#pfsum").innerHTML=`<b>Valeur : ${fmt(p.total)}</b> · <span class="${c(p.pnl)}">${fmt(p.pnl)} (${fmt(p.pnl_pct)} %)</span>`;
+ $("#pft").innerHTML="<tr><th>Titre</th><th>Qté</th><th>Cours</th><th>Valeur</th><th>+/- %</th><th>Poids</th><th></th></tr>"+p.rows.map((r,i)=>`<tr><td>${r.symbol}</td><td>${fmt(r.qty)}</td><td>${fmt(r.price)}</td><td>${fmt(r.value)}</td><td class="${c(r.pnl)}">${fmt(r.pnl_pct)}</td><td>${r.weight_pct} %</td><td><button class="ghost" data-i="${i}" aria-label="Retirer ${r.symbol}">✕</button></td></tr>`).join("");
+}
+const run=fn=>fn().then(()=>$("#err").textContent="").catch(e=>$("#err").textContent=e.message);
+const esc=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},st=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let etfs=[],extra=ld("etfx",[]),sel=new Set(ld("etfsel",["CW8.PA","ESE.PA","PAEEM.PA"])),cmp=null,sortK="perf",sortD=-1;
+const PAL=["#2a5bd7","#e0a100","#c8402f","#0f8a5f","#7a5af8","#d9468f","#1f9bb5","#8a6d3b"];
+async function loadEtf(){
+ if(!etfs.length){etfs=await api("/api/etfs");$("#ecat").innerHTML+=[...new Set(etfs.map(e=>e.category))].map(c=>`<option>${esc(c)}</option>`).join("")}
+ const all=[...etfs,...extra];
+ $("#etab").innerHTML=`<tr><td colspan="11">Chargement des cours…</td></tr>`;
+ cmp=await api(`/api/etfs/compare?period=${$("#per").value}&symbols=${encodeURIComponent(all.map(e=>e.symbol).join(","))}`);
+ renderEtf();
+}
+function renderEtf(){
+ if(!cmp)return;
+ const m=Object.fromEntries(cmp.rows.map(r=>[r.symbol,r])),cat=$("#ecat").value,pea=$("#epea").checked;
+ const list=[...etfs,...extra].filter(e=>m[e.symbol]&&(!cat||e.category===cat)&&(!pea||e.pea)).map(e=>({...e,...m[e.symbol]}));
+ list.sort((a,b)=>{const x=a[sortK],y=b[sortK];return x==null?1:y==null?-1:(typeof x==="string"?x.localeCompare(y):x-y)*sortD});
+ const c=v=>v==null?"":v>=0?"up":"dn",cols=[["symbol","Symbole"],["name","Nom"],["category","Catégorie"],["price","Cours"],["perf","Perf"],["cagr","Perf/an"],["vol","Volat."],["max_dd","Perte max"],["ratio","Rend./risque"]];
+ $("#etab").innerHTML=`<tr><th></th>${cols.map(([k,l])=>`<th data-k="${k}">${l}${k===sortK?(sortD>0?" ▲":" ▼"):""}</th>`).join("")}<th></th></tr>`+list.map(e=>`<tr>
+<td><input type="checkbox" data-s="${esc(e.symbol)}" ${sel.has(e.symbol)?"checked":""} aria-label="Comparer ${esc(e.symbol)}"></td>
+<td style="text-align:left">${esc(e.symbol)}</td><td style="text-align:left">${esc(e.name)} ${e.pea?'<span class="pea">PEA</span>':""}</td><td style="text-align:left">${esc(e.category)}</td>
+<td>${fmt(e.price)}</td><td class="n ${c(e.perf)}">${fmt(e.perf)} %</td><td class="n ${c(e.cagr)}">${e.cagr==null?"—":fmt(e.cagr)+" %"}</td>
+<td class="n">${fmt(e.vol)} %</td><td class="n dn">${fmt(e.max_dd)} %</td><td>${fmt(e.ratio)}</td>
+<td><button class="ghost" style="color:var(--acc)" data-a="${esc(e.symbol)}">Analyser</button>${e.custom?` <button class="ghost" data-x="${esc(e.symbol)}" aria-label="Retirer ${esc(e.symbol)}">✕</button>`:""}</td></tr>`).join("");
+ $("#emiss").textContent=cmp.missing.length?"Pas de données pour : "+cmp.missing.join(", "):"";
+ const ds4=[...sel].filter(s=>cmp.series[s]).map((s,i)=>ds(s,cmp.series[s],PAL[i%PAL.length]));
+ draw("#c4","line",{labels:cmp.dates,datasets:ds4},{spanGaps:true,plugins:{title:{display:true,text:"Comparaison base 100"},legend:{labels:{boxWidth:10}}}});
+}
+$("#ecat").onchange=$("#epea").onchange=renderEtf;
+$("#etab").onclick=e=>{const t=e.target,d=t.dataset;
+ if(d.k){sortD=sortK===d.k?-sortD:(d.k==="symbol"||d.k==="name"||d.k==="category"||d.k==="vol"?1:-1);sortK=d.k;renderEtf()}
+ else if(d.s){t.checked?sel.add(d.s):sel.delete(d.s);st("etfsel",[...sel]);renderEtf()}
+ else if(d.a){$("#sym").value=d.a;show("tech")}
+ else if(d.x){extra=extra.filter(x=>x.symbol!==d.x);sel.delete(d.x);st("etfx",extra);st("etfsel",[...sel]);run(loadEtf)}};
+$("#eadd").onsubmit=e=>{e.preventDefault();const s=$("#esym").value.trim().toUpperCase();
+ if(![...etfs,...extra].some(x=>x.symbol===s)){extra.push({symbol:s,name:"(ajout perso)",category:"Perso",pea:false,custom:true});st("etfx",extra)}
+ sel.add(s);st("etfsel",[...sel]);e.target.reset();run(loadEtf)};
+$("#per").onchange=()=>cur==="etf"&&run(loadEtf);
+const tabs={tech:loadTech,fund:loadFund,etf:loadEtf,pf:loadPf};let cur="tech";
+function show(t){cur=t;document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id===t));document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected",b.dataset.t===t));run(tabs[t])}
+document.querySelector("nav").onclick=e=>e.target.dataset.t&&show(e.target.dataset.t);
+$("#f").onsubmit=e=>{e.preventDefault();if(cur==="pf"||cur==="etf")show("tech");else run(tabs[cur])};
+$("#pff").onsubmit=e=>{e.preventDefault();pos.push({symbol:$("#ps").value.trim(),qty:+$("#pq").value,buy_price:+$("#pb").value});save();e.target.reset();run(loadPf)};
+$("#pft").onclick=e=>{const i=e.target.dataset.i;if(i!=null){pos.splice(+i,1);save();run(loadPf)}};
+run(loadTech);
+</script></body></html>
